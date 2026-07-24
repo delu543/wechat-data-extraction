@@ -98,6 +98,23 @@ if (( VALIDATE_PYTHON_ONLY == 1 )); then
 fi
 /usr/bin/xcrun --find clang >/dev/null 2>&1 || \
   fail "Apple Command Line Tools are required to build the pinned pilk package"
+SDK_ROOT=$(/usr/bin/xcrun --sdk macosx --show-sdk-path)
+[[ "$SDK_ROOT" == /* ]] || fail "A valid macOS SDK is required to build the pinned pilk package"
+SDK_ROOT=${SDK_ROOT:A}
+[[ "$SDK_ROOT" == /* && -d "$SDK_ROOT" && ! -L "$SDK_ROOT" ]] || \
+  fail "A valid macOS SDK is required to build the pinned pilk package"
+MACHINE_ARCH=$(/usr/bin/uname -m)
+[[ "$MACHINE_ARCH" == "arm64" || "$MACHINE_ARCH" == "x86_64" ]] || \
+  fail "Unsupported Mac architecture"
+# The setup-python distributions are universal builds and do not always pass an
+# SDK sysroot to bare clang. Build only for this machine and pin every compiler
+# search path instead of inheriting ambient developer flags.
+export SDKROOT="$SDK_ROOT"
+export ARCHFLAGS="-arch $MACHINE_ARCH"
+export CFLAGS="-isysroot $SDK_ROOT"
+export CXXFLAGS="-isysroot $SDK_ROOT"
+export CPPFLAGS="-isysroot $SDK_ROOT"
+export LDFLAGS="-isysroot $SDK_ROOT"
 
 /bin/mkdir -p "$HOME/Library/Application Support"
 for path in "$SUPPORT_ROOT" "$TOOLS_ROOT" "$RUNTIMES_ROOT"; do
