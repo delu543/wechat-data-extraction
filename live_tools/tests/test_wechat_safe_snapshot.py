@@ -44,6 +44,7 @@ from live_tools.wechat_safe_snapshot import (
     validate_private_output_root,
     _argument_parser,
     _resolve_cli_db_base,
+    _set_darwin_ofd_lock,
     _wal_checksum_words,
 )
 
@@ -694,16 +695,19 @@ class SafeSnapshotTests(unittest.TestCase):
         def forbidden_holder_probe(paths: object) -> object:
             raise AssertionError("online snapshot must not require WeChat to exit")
 
-        report = snapshot_and_decrypt(
-            db_base=base,
-            output_root=self._private_output(),
-            keys_file=key_file,
-            databases=["contact"],
-            holder_probe=forbidden_holder_probe,
-            xwechat_root=self.xwechat_root,
-            online=True,
-            online_cloner=fixture_cloner,
-        )
+        # This test covers the WAL/SHM anchor and replay logic. The separate
+        # OFD integration test below covers the real macOS lock semantics.
+        with mock.patch("live_tools.wechat_safe_snapshot._set_darwin_ofd_lock"):
+            report = snapshot_and_decrypt(
+                db_base=base,
+                output_root=self._private_output(),
+                keys_file=key_file,
+                databases=["contact"],
+                holder_probe=forbidden_holder_probe,
+                xwechat_root=self.xwechat_root,
+                online=True,
+                online_cloner=fixture_cloner,
+            )
         record = report["records"][0]
         self.assertEqual(
             report["safety"]["snapshot_mode"],
@@ -786,6 +790,14 @@ class SafeSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(released.stdout.strip(), "acquired")
 
+    def test_online_lock_fails_closed_without_ofd_support(self) -> None:
+        with mock.patch.object(fcntl, "F_OFD_SETLK", None, create=True):
+            with self.assertRaisesRegex(
+                OnlineSnapshotUnavailable,
+                "不支持安全的 OFD 在线协调锁",
+            ):
+                _set_darwin_ofd_lock(-1, fcntl.F_RDLCK)
+
     def test_online_snapshot_rejects_shm_wal_commit_mismatch(self) -> None:
         base = self._db_base("online_mismatch")
         key = bytes([0x73]) * 32
@@ -812,20 +824,21 @@ class SafeSnapshotTests(unittest.TestCase):
         key_file.write_text(json.dumps({"contact": key.hex()}), encoding="utf-8")
         os.chmod(key_file, 0o600)
         output = self._private_output()
-        with self.assertRaisesRegex(
-            OnlineSnapshotUnavailable,
-            "数据库页数与在线 SHM 不一致",
-        ):
-            snapshot_and_decrypt(
-                db_base=base,
-                output_root=output,
-                keys_file=key_file,
-                databases=["contact"],
-                holder_probe=lambda paths: [],
-                xwechat_root=self.xwechat_root,
-                online=True,
-                online_cloner=copy_stable_file_atomic,
-            )
+        with mock.patch("live_tools.wechat_safe_snapshot._set_darwin_ofd_lock"):
+            with self.assertRaisesRegex(
+                OnlineSnapshotUnavailable,
+                "数据库页数与在线 SHM 不一致",
+            ):
+                snapshot_and_decrypt(
+                    db_base=base,
+                    output_root=output,
+                    keys_file=key_file,
+                    databases=["contact"],
+                    holder_probe=lambda paths: [],
+                    xwechat_root=self.xwechat_root,
+                    online=True,
+                    online_cloner=copy_stable_file_atomic,
+                )
         self.assertFalse(list(output.glob("**/manifest.json")))
 
     def test_online_lock_failure_creates_no_run(self) -> None:
