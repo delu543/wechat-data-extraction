@@ -42,6 +42,7 @@ if [[ -n "${WECHAT_LOCAL_EXPORT_PYTHON:-}" ]]; then
   [[ "${WECHAT_LOCAL_EXPORT_ALLOW_UNVERIFIED_PYTHON:-}" == "1" ]] || \
     fail "A custom Python requires the explicit development opt-in"
   [[ "$WECHAT_LOCAL_EXPORT_PYTHON" == /* ]] || fail "Custom Python must be absolute"
+  PYTHON_REQUESTED=${WECHAT_LOCAL_EXPORT_PYTHON:a}
   PYTHON_BIN=${WECHAT_LOCAL_EXPORT_PYTHON:A}
   [[ -f "$PYTHON_BIN" && ! -L "$PYTHON_BIN" && -x "$PYTHON_BIN" ]] || \
     fail "Custom Python is not a regular executable"
@@ -50,7 +51,8 @@ if [[ -n "${WECHAT_LOCAL_EXPORT_PYTHON:-}" ]]; then
     fail "Custom Python has an unexpected owner"
   python_mode=$(/usr/bin/stat -f '%Lp' "$PYTHON_BIN")
   if (( (8#$python_mode & 8#022) != 0 )); then
-    wechat_allow_github_hosted_python "$PYTHON_BIN" "$python_owner" "$CURRENT_UID" || \
+    wechat_allow_github_hosted_python \
+      "$PYTHON_REQUESTED" "$PYTHON_BIN" "$python_owner" "$CURRENT_UID" || \
       fail "Custom Python is writable by another user"
   fi
 fi
