@@ -70,6 +70,11 @@ with the explicit source-development opt-in environment variable documented in t
 release must remove that path and execute only a fixed Companion whose Developer ID, Team ID,
 designated requirement, notarization and protocol version are verified by the client.
 
+The runtime installer defaults to `/usr/bin/python3`. CI may select the CPython installed by the
+SHA-pinned `actions/setup-python` action only when it supplies both an absolute executable path and
+the explicit development opt-in; ownership, mode, implementation and supported version are checked
+before a virtual environment is created.
+
 ## Known integrity limitation
 
 The current encrypted-database snapshot implementation validates AES-CBC output with a SQLite

@@ -10,9 +10,6 @@ TOOLS_ROOT="$SUPPORT_ROOT/tools"
 RUNTIMES_ROOT="$TOOLS_ROOT/runtimes"
 LOCK_HASH=$(/bin/cat "$BUILD_REQUIREMENTS" "$REQUIREMENTS" | \
   /usr/bin/shasum -a 256 | /usr/bin/awk '{print $1}')
-PYTHON_TAG=$(/usr/bin/python3 -c \
-  'import platform,sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}-{platform.machine()}")')
-RUNTIME_ROOT="$RUNTIMES_ROOT/runtime-${LOCK_HASH[1,16]}-$PYTHON_TAG"
 CURRENT_RUNTIME="$TOOLS_ROOT/python"
 CURRENT_UID=$(/usr/bin/id -u)
 STAGE=""
@@ -21,6 +18,24 @@ fail() {
   print -u2 -- "$1"
   exit 2
 }
+
+PYTHON_BIN=/usr/bin/python3
+if [[ -n "${WECHAT_LOCAL_EXPORT_PYTHON:-}" ]]; then
+  [[ "${WECHAT_LOCAL_EXPORT_ALLOW_UNVERIFIED_PYTHON:-}" == "1" ]] || \
+    fail "A custom Python requires the explicit development opt-in"
+  [[ "$WECHAT_LOCAL_EXPORT_PYTHON" == /* ]] || fail "Custom Python must be absolute"
+  PYTHON_BIN=${WECHAT_LOCAL_EXPORT_PYTHON:A}
+  [[ -f "$PYTHON_BIN" && ! -L "$PYTHON_BIN" && -x "$PYTHON_BIN" ]] || \
+    fail "Custom Python is not a regular executable"
+  python_owner=$(/usr/bin/stat -f '%u' "$PYTHON_BIN")
+  [[ "$python_owner" == "$CURRENT_UID" || "$python_owner" == "0" ]] || \
+    fail "Custom Python has an unexpected owner"
+  python_mode=$(/usr/bin/stat -f '%Lp' "$PYTHON_BIN")
+  (( (8#$python_mode & 8#022) == 0 )) || fail "Custom Python is writable by another user"
+fi
+PYTHON_TAG=$("$PYTHON_BIN" -c \
+  'import platform,sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}-{platform.machine()}")')
+RUNTIME_ROOT="$RUNTIMES_ROOT/runtime-${LOCK_HASH[1,16]}-$PYTHON_TAG"
 
 assert_private_directory() {
   local path=$1
@@ -47,7 +62,7 @@ trap cleanup EXIT
 [[ -f "$REQUIREMENTS" && ! -L "$REQUIREMENTS" ]] || fail "Runtime lock is missing"
 [[ -f "$BUILD_REQUIREMENTS" && ! -L "$BUILD_REQUIREMENTS" ]] || \
   fail "Build lock is missing"
-/usr/bin/python3 - <<'PY'
+"$PYTHON_BIN" - <<'PY'
 import platform
 import sys
 
@@ -70,7 +85,7 @@ done
 if [[ ! -d "$RUNTIME_ROOT" ]]; then
   STAGE=$(/usr/bin/mktemp -d "$RUNTIMES_ROOT/.install.XXXXXXXX")
   assert_private_directory "$STAGE"
-  /usr/bin/python3 -m venv "$STAGE/python"
+  "$PYTHON_BIN" -m venv "$STAGE/python"
   "$STAGE/python/bin/python" -m pip \
     --isolated \
     --disable-pip-version-check \
@@ -99,7 +114,7 @@ import imageio_ffmpeg
 import pilk
 import zstandard
 PY
-  /usr/bin/python3 - "$STAGE/python" "$RUNTIME_ROOT" <<'PY'
+  "$PYTHON_BIN" - "$STAGE/python" "$RUNTIME_ROOT" <<'PY'
 import ctypes
 import errno
 import os
@@ -125,7 +140,7 @@ if [[ -e "$CURRENT_RUNTIME" && ! -L "$CURRENT_RUNTIME" ]]; then
 fi
 temporary="$TOOLS_ROOT/.python.$$.tmp"
 /bin/ln -s "$RUNTIME_ROOT" "$temporary"
-/usr/bin/python3 - "$temporary" "$CURRENT_RUNTIME" <<'PY'
+"$PYTHON_BIN" - "$temporary" "$CURRENT_RUNTIME" <<'PY'
 import os
 import sys
 
