@@ -21,7 +21,8 @@ PYTHON_BIN="$TOOL_CACHE/Python/current/bin/python3"
 /bin/chmod 775 "$PYTHON_BIN"
 CURRENT_UID=$(/usr/bin/id -u)
 
-if wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
+if wechat_allow_github_hosted_python \
+  "$PYTHON_BIN" "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
   print -u2 "Group-writable custom Python was accepted without the hosted-runner gate"
   exit 2
 fi
@@ -32,7 +33,8 @@ RUNNER_ENVIRONMENT=github-hosted \
 RUNNER_OS=macOS \
 RUNNER_TOOL_CACHE="$TOOL_CACHE" \
 WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
-  wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"
+  wechat_allow_github_hosted_python \
+    "$PYTHON_BIN" "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"
 
 if CI=true \
   GITHUB_ACTIONS=true \
@@ -40,7 +42,8 @@ if CI=true \
   RUNNER_OS=macOS \
   RUNNER_TOOL_CACHE="$TOOL_CACHE" \
   WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
-    wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
+    wechat_allow_github_hosted_python \
+      "$PYTHON_BIN" "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
   print -u2 "A self-hosted runner was accepted by the hosted-runner exception"
   exit 2
 fi
@@ -51,7 +54,8 @@ if CI=true \
   RUNNER_OS=macOS \
   RUNNER_TOOL_CACHE="$TEST_ROOT/different-cache" \
   WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
-    wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
+    wechat_allow_github_hosted_python \
+      "$PYTHON_BIN" "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
   print -u2 "Hosted-runner Python outside the declared tool cache was accepted"
   exit 2
 fi
@@ -62,8 +66,33 @@ if CI=true \
   RUNNER_OS=macOS \
   RUNNER_TOOL_CACHE="$TOOL_CACHE" \
   WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
-    wechat_allow_github_hosted_python "$PYTHON_BIN" "0" "$CURRENT_UID"; then
+    wechat_allow_github_hosted_python \
+      "$PYTHON_BIN" "$PYTHON_BIN" "777" "$CURRENT_UID"; then
   print -u2 "Hosted-runner Python owned by another user was accepted"
+  exit 2
+fi
+
+CI=true \
+GITHUB_ACTIONS=true \
+RUNNER_ENVIRONMENT=github-hosted \
+RUNNER_OS=macOS \
+RUNNER_TOOL_CACHE="$TOOL_CACHE" \
+WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
+  wechat_allow_github_hosted_python \
+    "$PYTHON_BIN" \
+    "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
+    "0" \
+    "$CURRENT_UID"
+
+if CI=true \
+  GITHUB_ACTIONS=true \
+  RUNNER_ENVIRONMENT=github-hosted \
+  RUNNER_OS=macOS \
+  RUNNER_TOOL_CACHE="$TOOL_CACHE" \
+  WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
+    wechat_allow_github_hosted_python \
+      "$PYTHON_BIN" "/tmp/untrusted-python" "0" "$CURRENT_UID"; then
+  print -u2 "A hosted-runner shim resolving outside trusted roots was accepted"
   exit 2
 fi
 
