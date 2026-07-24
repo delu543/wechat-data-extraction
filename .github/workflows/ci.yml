@@ -13,7 +13,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
       - name: Install runtime dependencies
-        run: ./scripts/setup_runtime_tools.sh
+        run: |
+          WECHAT_LOCAL_EXPORT_ALLOW_UNVERIFIED_PYTHON=1 \
+          WECHAT_LOCAL_EXPORT_PYTHON="$(command -v python3)" \
+            ./scripts/setup_runtime_tools.sh
       - name: Run release checks
         run: ./scripts/release_check.sh

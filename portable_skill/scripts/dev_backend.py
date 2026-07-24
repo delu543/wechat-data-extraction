@@ -673,7 +673,7 @@ def _find_swift_binary(project_root: Path) -> Path:
 def run_doctor(args: argparse.Namespace, project_root: Path, backend: SimpleNamespace) -> int:
     base: dict[str, Any] = {
         "backend": "development-source",
-        "backend_version": "0.2.0-dev.7",
+        "backend_version": "0.2.0-dev.8",
         "signed_companion": False,
         "notarized_companion": False,
         "product_ready": False,
