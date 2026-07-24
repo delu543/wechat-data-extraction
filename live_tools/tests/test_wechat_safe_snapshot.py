@@ -697,7 +697,9 @@ class SafeSnapshotTests(unittest.TestCase):
 
         # This test covers the WAL/SHM anchor and replay logic. The separate
         # OFD integration test below covers the real macOS lock semantics.
-        with mock.patch("live_tools.wechat_safe_snapshot._set_darwin_ofd_lock"):
+        with mock.patch(
+            "live_tools.wechat_safe_snapshot._set_darwin_ofd_lock"
+        ) as lock_mock:
             report = snapshot_and_decrypt(
                 db_base=base,
                 output_root=self._private_output(),
@@ -708,6 +710,10 @@ class SafeSnapshotTests(unittest.TestCase):
                 online=True,
                 online_cloner=fixture_cloner,
             )
+        self.assertEqual(
+            [call.args[1] for call in lock_mock.call_args_list],
+            [fcntl.F_RDLCK, fcntl.F_UNLCK],
+        )
         record = report["records"][0]
         self.assertEqual(
             report["safety"]["snapshot_mode"],
