@@ -1,0 +1,20 @@
+{
+  "name": "wechat-data-extraction",
+  "interface": {
+    "displayName": "微信数据提取项目"
+  },
+  "plugins": [
+    {
+      "name": "wechat-local-export",
+      "source": {
+        "source": "local",
+        "path": "./portable_skill"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

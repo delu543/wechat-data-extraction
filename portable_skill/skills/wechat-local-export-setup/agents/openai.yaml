@@ -1,0 +1,6 @@
+interface:
+  display_name: "WeChat Local Export Setup"
+  short_description: "Explicitly initialize and verify the local export environment"
+  default_prompt: "Use $wechat-local-export-setup only after I explicitly invoke it, inspect key-initialization prerequisites, obtain separate confirmations for key capture and retained private snapshot creation, and keep all database keys and internal approval digests private."
+policy:
+  allow_implicit_invocation: false

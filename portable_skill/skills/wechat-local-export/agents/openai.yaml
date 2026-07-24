@@ -1,0 +1,6 @@
+interface:
+  display_name: "WeChat Local Export"
+  short_description: "Dry-scan and export authorized local Mac WeChat records"
+  default_prompt: "Use $wechat-local-export to resolve the chat and absolute time range, run a read-only dry scan, wait for my exact confirmation, and then export locally."
+policy:
+  allow_implicit_invocation: true

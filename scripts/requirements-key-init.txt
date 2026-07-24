@@ -1,0 +1,21 @@
+# Hashes are from the canonical PyPI release JSON documents:
+# https://pypi.org/pypi/frida/17.16.4/json
+# https://pypi.org/pypi/pycryptodome/3.23.0/json
+# https://pypi.org/pypi/typing-extensions/4.16.0/json
+#
+# This product supports standard CPython 3.9+ on macOS Intel and Apple Silicon.
+# Frida publishes one macOS wheel for each architecture. PyCryptodome's cp37-abi3
+# wheels cover supported standard CPython versions; the universal2 wheel covers
+# Apple Silicon. Source distributions, PyPy, and free-threaded CPython are not
+# accepted by the installer.
+
+frida==17.16.4 \
+    --hash=sha256:579bfd8735850c3af40dc8473ff84ddd9efada8ed8f1a3886696b7c555d6f877 \
+    --hash=sha256:fde60a47e516e685ef562746d5144832b18481a5c84bd0b5416d39d30cdb55b4
+
+pycryptodome==3.23.0 \
+    --hash=sha256:187058ab80b3281b1de11c2e6842a357a1f71b42cb1e15bce373f3d238135c27 \
+    --hash=sha256:cfb5cd445280c5b0a4e6187a7ce8de5a07b5f3f897f235caa11f1f435f182843
+
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8

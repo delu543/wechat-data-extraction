@@ -1,0 +1,34 @@
+{
+  "name": "wechat-local-export",
+  "version": "0.2.0-dev.7",
+  "description": "Orchestrate authorized, local-only Mac WeChat 4.x exports through a fail-closed helper with dry-scan confirmation.",
+  "author": {
+    "name": "微信数据提取项目"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "wechat",
+    "macos",
+    "local-export",
+    "privacy",
+    "archive"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "WeChat Local Export",
+    "shortDescription": "Safely scan and export local Mac WeChat records",
+    "longDescription": "Use natural-language chat and time descriptions to create a read-only dry scan, require an exact confirmation, and then invoke a local helper. This development package ships no signed companion and does not upload chat data.",
+    "developerName": "微信数据提取项目",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Export the messages from a Mac WeChat group for a specific time range.",
+      "Dry-scan the voice messages in a WeChat chat, then wait for my confirmation."
+    ],
+    "brandColor": "#16A085",
+    "screenshots": []
+  }
+}

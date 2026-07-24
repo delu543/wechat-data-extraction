@@ -1,0 +1,19 @@
+name: regression
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install runtime dependencies
+        run: ./scripts/setup_runtime_tools.sh
+      - name: Run release checks
+        run: ./scripts/release_check.sh
