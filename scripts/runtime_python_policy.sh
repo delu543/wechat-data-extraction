@@ -12,6 +12,8 @@ wechat_allow_github_hosted_python() {
 
   [[ "${WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON:-}" == "1" ]] || return 1
   [[ "${CI:-}" == "true" && "${GITHUB_ACTIONS:-}" == "true" ]] || return 1
+  [[ "${RUNNER_ENVIRONMENT:-}" == "github-hosted" ]] || return 1
+  [[ "${RUNNER_OS:-}" == "macOS" ]] || return 1
   [[ -n "${RUNNER_TOOL_CACHE:-}" && "$RUNNER_TOOL_CACHE" == /* ]] || return 1
   python_path=${python_path:A}
   runner_tool_cache=${RUNNER_TOOL_CACHE:A}

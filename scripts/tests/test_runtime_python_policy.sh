@@ -28,12 +28,27 @@ fi
 
 CI=true \
 GITHUB_ACTIONS=true \
+RUNNER_ENVIRONMENT=github-hosted \
+RUNNER_OS=macOS \
 RUNNER_TOOL_CACHE="$TOOL_CACHE" \
 WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
   wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"
 
 if CI=true \
   GITHUB_ACTIONS=true \
+  RUNNER_ENVIRONMENT=self-hosted \
+  RUNNER_OS=macOS \
+  RUNNER_TOOL_CACHE="$TOOL_CACHE" \
+  WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
+    wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
+  print -u2 "A self-hosted runner was accepted by the hosted-runner exception"
+  exit 2
+fi
+
+if CI=true \
+  GITHUB_ACTIONS=true \
+  RUNNER_ENVIRONMENT=github-hosted \
+  RUNNER_OS=macOS \
   RUNNER_TOOL_CACHE="$TEST_ROOT/different-cache" \
   WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
     wechat_allow_github_hosted_python "$PYTHON_BIN" "$CURRENT_UID" "$CURRENT_UID"; then
@@ -43,6 +58,8 @@ fi
 
 if CI=true \
   GITHUB_ACTIONS=true \
+  RUNNER_ENVIRONMENT=github-hosted \
+  RUNNER_OS=macOS \
   RUNNER_TOOL_CACHE="$TOOL_CACHE" \
   WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
     wechat_allow_github_hosted_python "$PYTHON_BIN" "0" "$CURRENT_UID"; then
