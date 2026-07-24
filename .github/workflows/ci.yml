@@ -13,6 +13,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify native macOS OFD lock semantics
+        run: |
+          /usr/bin/python3 -m unittest -v \
+            live_tools.tests.test_wechat_safe_snapshot.SafeSnapshotTests.test_online_ofd_lock_survives_unrelated_close_and_releases
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
