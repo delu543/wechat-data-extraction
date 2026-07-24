@@ -5,6 +5,7 @@ umask 077
 PROJECT_ROOT=${0:A:h:h}
 REQUIREMENTS="$PROJECT_ROOT/scripts/requirements-runtime.txt"
 BUILD_REQUIREMENTS="$PROJECT_ROOT/scripts/requirements-build.txt"
+PYTHON_POLICY="$PROJECT_ROOT/scripts/runtime_python_policy.sh"
 SUPPORT_ROOT="$HOME/Library/Application Support/WeChatLocalExport"
 TOOLS_ROOT="$SUPPORT_ROOT/tools"
 RUNTIMES_ROOT="$TOOLS_ROOT/runtimes"
@@ -13,11 +14,28 @@ LOCK_HASH=$(/bin/cat "$BUILD_REQUIREMENTS" "$REQUIREMENTS" | \
 CURRENT_RUNTIME="$TOOLS_ROOT/python"
 CURRENT_UID=$(/usr/bin/id -u)
 STAGE=""
+VALIDATE_PYTHON_ONLY=0
 
 fail() {
   print -u2 -- "$1"
   exit 2
 }
+
+case "${1:-}" in
+  "")
+    ;;
+  --validate-python-only)
+    VALIDATE_PYTHON_ONLY=1
+    shift
+    ;;
+  *)
+    fail "Usage: setup_runtime_tools.sh [--validate-python-only]"
+    ;;
+esac
+(( $# == 0 )) || fail "Usage: setup_runtime_tools.sh [--validate-python-only]"
+
+[[ -f "$PYTHON_POLICY" && ! -L "$PYTHON_POLICY" ]] || fail "Runtime Python policy is missing"
+source "$PYTHON_POLICY"
 
 PYTHON_BIN=/usr/bin/python3
 if [[ -n "${WECHAT_LOCAL_EXPORT_PYTHON:-}" ]]; then
@@ -31,7 +49,10 @@ if [[ -n "${WECHAT_LOCAL_EXPORT_PYTHON:-}" ]]; then
   [[ "$python_owner" == "$CURRENT_UID" || "$python_owner" == "0" ]] || \
     fail "Custom Python has an unexpected owner"
   python_mode=$(/usr/bin/stat -f '%Lp' "$PYTHON_BIN")
-  (( (8#$python_mode & 8#022) == 0 )) || fail "Custom Python is writable by another user"
+  if (( (8#$python_mode & 8#022) != 0 )); then
+    wechat_allow_github_hosted_python "$PYTHON_BIN" "$python_owner" "$CURRENT_UID" || \
+      fail "Custom Python is writable by another user"
+  fi
 fi
 PYTHON_TAG=$("$PYTHON_BIN" -c \
   'import platform,sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}-{platform.machine()}")')
@@ -69,6 +90,10 @@ import sys
 supported = platform.python_implementation() == "CPython" and (3, 9) <= sys.version_info[:2] < (3, 14)
 raise SystemExit(0 if supported else "Standard CPython 3.9 through 3.13 is required")
 PY
+if (( VALIDATE_PYTHON_ONLY == 1 )); then
+  print "Runtime Python policy: OK"
+  exit 0
+fi
 /usr/bin/xcrun --find clang >/dev/null 2>&1 || \
   fail "Apple Command Line Tools are required to build the pinned pilk package"
 

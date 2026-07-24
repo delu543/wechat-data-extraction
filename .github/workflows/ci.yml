@@ -19,6 +19,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           WECHAT_LOCAL_EXPORT_ALLOW_UNVERIFIED_PYTHON=1 \
+          WECHAT_LOCAL_EXPORT_ALLOW_GITHUB_HOSTED_PYTHON=1 \
           WECHAT_LOCAL_EXPORT_PYTHON="$(command -v python3)" \
             ./scripts/setup_runtime_tools.sh
       - name: Run release checks

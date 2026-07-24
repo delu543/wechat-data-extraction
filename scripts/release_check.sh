@@ -31,6 +31,7 @@ PYTHONPYCACHEPREFIX="$TEMP_ROOT/pycache" \
 PYTHONPYCACHEPREFIX="$TEMP_ROOT/pycache" \
   "$RUNTIME_PYTHON" -m unittest portable_skill.tests.test_package
 "$PROJECT_ROOT/scripts/tests/test_codex_bootstrap.sh"
+"$PROJECT_ROOT/scripts/tests/test_runtime_python_policy.sh"
 "$PROJECT_ROOT/scripts/build.sh"
 "$PROJECT_ROOT/.build/release/wechat-voice-mp4" verify-core
 "$PROJECT_ROOT/.build/release/wechat-voice-mp4" self-test \

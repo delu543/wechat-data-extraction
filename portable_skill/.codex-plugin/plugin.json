@@ -1,6 +1,6 @@
 {
   "name": "wechat-local-export",
-  "version": "0.2.0-dev.8",
+  "version": "0.2.0-dev.9",
   "description": "Orchestrate authorized, local-only Mac WeChat 4.x exports through a fail-closed helper with dry-scan confirmation.",
   "author": {
     "name": "微信数据提取项目"
