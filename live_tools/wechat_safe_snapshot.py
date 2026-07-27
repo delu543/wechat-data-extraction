@@ -18,6 +18,7 @@ published.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import ctypes
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -56,6 +57,7 @@ WAL_MAGIC_LITTLE_CHECKSUM = 0x377F0682
 WAL_MAGIC_BIG_CHECKSUM = 0x377F0683
 CLONE_NOFOLLOW = 0x0001
 CLONE_NOOWNERCOPY = 0x0002
+MAX_ONLINE_DECRYPT_WORKERS = 2
 DEFAULT_XWECHAT_ROOT = Path(
     "~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"
 ).expanduser()
@@ -1376,6 +1378,7 @@ def materialize_copied_database_with_wal(
     destination: Path,
     *,
     online_anchor: Optional[OnlineWalAnchor] = None,
+    base_cloner: Optional[OnlineCloner] = None,
 ) -> dict[str, Any]:
     """Create one private encrypted DB image at the WAL's last commit."""
 
@@ -1396,7 +1399,22 @@ def materialize_copied_database_with_wal(
     )
     if work.exists() or work.is_symlink():
         raise SnapshotError("WAL materialize 临时文件已存在")
-    copy_stable_file_atomic(database_path, work, database_fingerprint)
+    if base_cloner is None:
+        copy_report = copy_stable_file_atomic(
+            database_path,
+            work,
+            database_fingerprint,
+        )
+        base_copy_method = "stable_stream_copy"
+    else:
+        copy_report = base_cloner(
+            database_path,
+            work,
+            database_fingerprint,
+        )
+        base_copy_method = str(
+            copy_report.get("clone_method") or "online_cloner"
+        )
     wal_descriptor: Optional[int] = None
     database_descriptor: Optional[int] = None
     try:
@@ -1457,6 +1475,7 @@ def materialize_copied_database_with_wal(
             "wal_frames_applied": len(plan.frames),
             "ignored_uncommitted_frames": plan.ignored_uncommitted_frames,
             "scan_stop": plan.scan_stop,
+            "base_copy_method": base_copy_method,
         }
     finally:
         if wal_descriptor is not None:
@@ -2273,13 +2292,30 @@ def snapshot_and_decrypt(
             Path(str(encrypted_database) + "-wal"),
             materialized_database,
             online_anchor=online_anchors.get(relative),
+            base_cloner=online_cloner if online else None,
         )
+
+    def decrypt_one(relative: str) -> tuple[str, dict[str, Any]]:
+        return (
+            relative,
+            decrypt_snapshot_database(
+                materialized_root,
+                relative,
+                decrypted_root,
+                keys[relative],
+            ),
+        )
+
+    if online and len(requested) > 1:
+        worker_count = min(MAX_ONLINE_DECRYPT_WORKERS, len(requested))
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            decrypted_records = dict(executor.map(decrypt_one, requested))
+    else:
+        decrypted_records = dict(map(decrypt_one, requested))
 
     records: list[dict[str, Any]] = []
     for relative in requested:
-        decrypted = decrypt_snapshot_database(
-            materialized_root, relative, decrypted_root, keys[relative]
-        )
+        decrypted = decrypted_records[relative]
         records.append(
             {
                 "database": relative,

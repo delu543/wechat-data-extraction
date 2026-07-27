@@ -319,6 +319,16 @@ class PackageStaticTests(unittest.TestCase):
             self.assertEqual(public["status"], "complete")
             self.assertEqual(public["message_count"], 2)
             self.assertTrue(public["temporary_plan_cleaned"])
+            self.assertEqual(
+                set(public["stage_timing_ms"]),
+                {"doctor", "scan", "export", "total"},
+            )
+            self.assertTrue(
+                all(
+                    type(value) is int and value >= 0
+                    for value in public["stage_timing_ms"].values()
+                )
+            )
             self.assertNotIn(str(request), public_text)
             self.assertNotIn(str(output), public_text)
             self.assertNotIn(scan_digest, public_text)

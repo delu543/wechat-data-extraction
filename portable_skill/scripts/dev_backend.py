@@ -17,6 +17,7 @@ import re
 import secrets
 import stat
 import sys
+import time
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping, Sequence
 
@@ -51,6 +52,10 @@ SUPPORTED_TYPES = (
     "system",
     "unknown",
 )
+
+
+def _elapsed_milliseconds(started_ns: int) -> int:
+    return max(0, (time.perf_counter_ns() - started_ns + 500_000) // 1_000_000)
 
 
 class DevelopmentBackendError(RuntimeError):
@@ -785,6 +790,7 @@ def run_scan(
     report_sink: Callable[[Mapping[str, Any]], None] = _json_output,
     reserved_output: bool = False,
 ) -> int:
+    scan_started_ns = time.perf_counter_ns()
     request = _validate_scan_request(_read_private_json(args.request))
     profile: dict[str, Any] | None = None
     binding: Any | None = None
@@ -800,6 +806,7 @@ def run_scan(
     elif output.exists() or output.is_symlink():
         raise DevelopmentBackendError("扫描计划输出已经存在，拒绝覆盖")
 
+    chat_resolution_started_ns = time.perf_counter_ns()
     candidates = backend.find_chat_candidates(vault, request["chat"])
     if request["chat_id"] is None:
         exact = [item for item in candidates if item.get("match") == "exact"]
@@ -827,6 +834,12 @@ def run_scan(
                     },
                     "requested_types": request["types"],
                     "plan_created": False,
+                    "stage_timing_ms": {
+                        "chat_resolution": _elapsed_milliseconds(
+                            chat_resolution_started_ns
+                        ),
+                        "total": _elapsed_milliseconds(scan_started_ns),
+                    },
                 }
             )
             return 3
@@ -862,12 +875,21 @@ def run_scan(
                     },
                     "requested_types": request["types"],
                     "plan_created": False,
+                    "stage_timing_ms": {
+                        "chat_resolution": _elapsed_milliseconds(
+                            chat_resolution_started_ns
+                        ),
+                        "total": _elapsed_milliseconds(scan_started_ns),
+                    },
                 }
             )
             return 3
 
+    chat_resolution_ms = _elapsed_milliseconds(chat_resolution_started_ns)
+    online_snapshot_ms = 0
     if binding is not None:
         assert profile is not None and request["chat_id"] is not None
+        online_snapshot_started_ns = time.perf_counter_ns()
         _refresh_online_or_stop(
             backend,
             binding,
@@ -875,6 +897,7 @@ def run_scan(
             kinds=request["types"],
             chat_id=request["chat_id"],
         )
+        online_snapshot_ms = _elapsed_milliseconds(online_snapshot_started_ns)
         profile = _profile_or_stop(backend, binding)
         vault = backend.resolve_vault(profile["vault_dir"])
         output = backend.ensure_output(Path(args.output), vault)
@@ -883,6 +906,7 @@ def run_scan(
         elif output.exists() or output.is_symlink():
             raise DevelopmentBackendError("扫描计划输出已经存在，拒绝覆盖")
 
+    plan_started_ns = time.perf_counter_ns()
     plan = backend.build_content_plan(
         vault,
         request["chat"],
@@ -892,6 +916,7 @@ def run_scan(
         chat_id=request["chat_id"],
         kinds=None if request["types"] == ["all"] else request["types"],
     )
+    plan_build_ms = _elapsed_milliseconds(plan_started_ns)
     if binding is not None:
         _attach_plan_routing(plan, binding, backend)
     backend.write_json(output, plan, vault)
@@ -919,6 +944,12 @@ def run_scan(
             if binding is not None
             else "explicit-development-paths"
         ),
+        "stage_timing_ms": {
+            "chat_resolution": chat_resolution_ms,
+            "online_snapshot": online_snapshot_ms,
+            "plan_build": plan_build_ms,
+            "total": _elapsed_milliseconds(scan_started_ns),
+        },
     }
     if binding is not None:
         public_report["snapshot_mode"] = "online"
@@ -933,6 +964,7 @@ def run_export(
     *,
     report_sink: Callable[[Mapping[str, Any]], None] = _json_output,
 ) -> int:
+    export_started_ns = time.perf_counter_ns()
     plan = backend.load_content_plan(args.plan)
     explicit_development = _development_path_mode(
         args.vault_dir, args.account_root, args.swift_bin
@@ -987,6 +1019,9 @@ def run_export(
             "backend": "development-source",
             "signed_companion": False,
             **report,
+            "stage_timing_ms": {
+                "archive_export": _elapsed_milliseconds(export_started_ns),
+            },
         }
     )
     return 0
@@ -1020,6 +1055,12 @@ def run_direct_voice_mp4(
 ) -> int:
     """Doctor, online-scan, and strictly export one explicit voice request."""
 
+    direct_started_ns = time.perf_counter_ns()
+    doctor_ms = 0
+    scan_ms = 0
+    export_ms = 0
+    scan_breakdown: Mapping[str, Any] | None = None
+    export_breakdown: Mapping[str, Any] | None = None
     request_path = _direct_request_path(args.request)
     initial_identity = _private_file_identity(request_path, "私有请求文件")
     request = _validate_scan_request(_read_private_json(str(request_path)))
@@ -1037,7 +1078,9 @@ def run_direct_voice_mp4(
     if output.exists() or output.is_symlink():
         raise DevelopmentBackendError("导出目标已经存在，拒绝覆盖")
 
+    doctor_started_ns = time.perf_counter_ns()
     _doctor_gate_direct_voice(backend)
+    doctor_ms = _elapsed_milliseconds(doctor_started_ns)
     if _private_file_identity(request_path, "私有请求文件") != initial_identity:
         raise DevelopmentBackendError("私有请求文件在 doctor 后发生变化")
 
@@ -1046,15 +1089,19 @@ def run_direct_voice_mp4(
     return_code: int
     try:
         scan_reports: list[Mapping[str, Any]] = []
+        scan_started_ns = time.perf_counter_ns()
         scan_code = run_scan(
             SimpleNamespace(request=str(request_path), output=str(plan_path)),
             backend,
             report_sink=scan_reports.append,
             reserved_output=True,
         )
+        scan_ms = _elapsed_milliseconds(scan_started_ns)
         if len(scan_reports) != 1:
             raise DevelopmentBackendError("在线扫描未返回唯一的安全结果")
         scan_report = scan_reports[0]
+        if isinstance(scan_report.get("stage_timing_ms"), Mapping):
+            scan_breakdown = scan_report["stage_timing_ms"]
         if scan_code != 0:
             public_report = {
                 **dict(scan_report),
@@ -1112,6 +1159,7 @@ def run_direct_voice_mp4(
                 return_code = 3
             else:
                 export_reports: list[Mapping[str, Any]] = []
+                export_started_ns = time.perf_counter_ns()
                 export_code = run_export(
                     SimpleNamespace(
                         vault_dir=None,
@@ -1128,9 +1176,12 @@ def run_direct_voice_mp4(
                     backend,
                     report_sink=export_reports.append,
                 )
+                export_ms = _elapsed_milliseconds(export_started_ns)
                 if export_code != 0 or len(export_reports) != 1:
                     raise DevelopmentBackendError("严格语音 MP4 导出未完成")
                 export_report = export_reports[0]
+                if isinstance(export_report.get("stage_timing_ms"), Mapping):
+                    export_breakdown = export_report["stage_timing_ms"]
                 verification = export_report.get("verification")
                 if (
                     export_report.get("status") != "complete"
@@ -1170,6 +1221,22 @@ def run_direct_voice_mp4(
         _cleanup_internal_plan(plan_path, request_path.parent)
 
     public_report["temporary_plan_cleaned"] = True
+    public_report["stage_timing_ms"] = {
+        "doctor": doctor_ms,
+        "scan": scan_ms,
+        "export": export_ms,
+        "total": _elapsed_milliseconds(direct_started_ns),
+        **(
+            {"scan_breakdown": dict(scan_breakdown)}
+            if scan_breakdown is not None
+            else {}
+        ),
+        **(
+            {"export_breakdown": dict(export_breakdown)}
+            if export_breakdown is not None
+            else {}
+        ),
+    }
     _json_output(public_report)
     return return_code
 

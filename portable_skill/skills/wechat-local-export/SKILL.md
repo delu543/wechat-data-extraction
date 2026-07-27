@@ -29,6 +29,22 @@ only need to say “确认导出” after the scan. A narrow exception applies w
 explicitly says to export voice directly: after a nonempty, unambiguous voice-only scan, continue in
 that same conversation with strict MP4-only export and report the scanned count in the final result.
 
+### Latency and delivery contract
+
+For an ordinary explicit voice-to-MP4 request, keep the user-facing critical path to one
+`direct-voice-mp4` invocation. As soon as its strict verification and atomic publication succeed,
+return the file link and count to the user. Do not put repository release checks, package
+installation, Swift rebuilds, Git commits, GitHub pushes or CI waits in front of that handoff.
+Those are development/release work and are run only when code actually changed; their status must
+be reported separately from the already verified media artifact.
+
+Use the command's safe `stage_timing_ms` report to distinguish doctor, online snapshot, scan and
+export time. Do not repeat an online snapshot for an unchanged request merely to perform additional
+diagnostics. If a normal warm export exceeds 45 seconds, report the slow stage and investigate it
+after handing off any already verified artifact. Never remove WAL coordination, exact counts,
+hashes, duration/order checks, full MP4 decode verification or atomic publication to meet a latency
+target.
+
 ## Non-negotiable boundaries
 
 - Work only with the user's authorized, local Mac WeChat 4.x data.

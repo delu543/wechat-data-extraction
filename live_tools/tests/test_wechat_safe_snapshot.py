@@ -740,7 +740,11 @@ class SafeSnapshotTests(unittest.TestCase):
             1,
         )
         self.assertEqual(record["shm_state"], "locked_live_index_not_copied")
-        self.assertEqual(len(clone_calls), 2)
+        self.assertEqual(len(clone_calls), 3)
+        self.assertEqual(
+            record["wal_validation"]["base_copy_method"],
+            "fixture_atomic_copy",
+        )
         run = Path(report["run_directory"])
         self.assertFalse(Path(str(run / "encrypted" / CONTACT_REL) + "-shm").exists())
         with sqlite3.connect(run / "decrypted" / CONTACT_REL) as connection:
