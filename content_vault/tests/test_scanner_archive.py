@@ -765,8 +765,13 @@ class ArchiveExportTests(unittest.TestCase):
         self.assertEqual(bytes(process.stdin.data), expected)
         self.assertEqual(popen.call_count, 1)
         self.assertEqual(probe.call_count, 1)
-        self.assertIn("pipe:0", popen.call_args.args[0])
-        self.assertNotIn("pcm-to-m4a", popen.call_args.args[0])
+        arguments = popen.call_args.args[0]
+        self.assertIn("pipe:0", arguments)
+        self.assertNotIn("pcm-to-m4a", arguments)
+        self.assertNotIn("-t", arguments)
+        self.assertIn("-shortest", arguments)
+        color_input = arguments[arguments.index("-i") + 1]
+        self.assertTrue(color_input.endswith(":d=0.600000"))
         self.assertEqual(
             [
                 (
@@ -838,6 +843,167 @@ class ArchiveExportTests(unittest.TestCase):
         self.assertTrue(case["output"].is_file())
         self.assertGreater(case["output"].stat().st_size, 0)
         self.assertEqual(case["output"].stat().st_mode & 0o777, 0o600)
+
+    def test_stream_fast_path_preserves_non_video_frame_aligned_tail(
+        self,
+    ) -> None:
+        case = self.streaming_fixture("real-stream-tail")
+        (
+            extract,
+            manifest_path,
+            manifest_hash,
+            source_plan_digest,
+            chat,
+            time_range,
+            voices,
+        ) = case["loaded"]
+        message = case["messages"][0]
+        voice = voices[0]
+        extracted = case["extract_report"]["voices"][0]
+        for record in (voice, extracted):
+            record["expected_duration_ms"] = 1_060
+            record["frame_duration_ms"] = 1_060
+        extracted["packet_count"] = 53
+        message["payload"]["duration_ms"] = 1_060
+        case["messages"] = [message]
+        case["extract_report"]["voices"] = [extracted]
+        case["loaded"] = (
+            extract,
+            manifest_path,
+            manifest_hash,
+            source_plan_digest,
+            chat,
+            time_range,
+            [voice],
+        )
+
+        def tail_decoder(
+            _source: Path,
+            destination: Path,
+            sample_rate: int,
+        ) -> None:
+            self.assertEqual(sample_rate, 24_000)
+            destination.write_bytes(b"\x01\x00" * 25_440)
+
+        with mock.patch.object(
+            archive_export_module,
+            "_load_extract_manifest",
+            return_value=case["loaded"],
+        ), mock.patch.object(
+            archive_export_module,
+            "_default_silk_decoder",
+            side_effect=tail_decoder,
+        ):
+            evidence, report = archive_export_module._stream_voice_pcm_to_mp4(
+                case["extract"],
+                case["extract_report"],
+                case["messages"],
+                case["output"],
+                title="non-frame-aligned tail fixture",
+                expected_chat_id=case["chat_id"],
+                expected_source_plan_digest=case["source_plan_digest"],
+            )
+
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(report["pcm_total_samples"], 25_440)
+        self.assertGreaterEqual(report["container_duration_ms"], 1_050)
+        self.assertEqual(report["audio_codec"], "aac")
+        self.assertEqual(report["video_codec"], "h264")
+        ffmpeg, _version, _digest = (
+            archive_export_module._resolve_local_ffmpeg()
+        )
+        audio_probe = subprocess.run(
+            [
+                str(ffmpeg),
+                "-nostdin",
+                "-hide_banner",
+                "-i",
+                str(case["output"]),
+                "-map",
+                "0:a:0",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(audio_probe.returncode, 0)
+        audio_duration = (
+            archive_export_module._ffmpeg_duration_milliseconds(
+                audio_probe.stderr
+            )
+        )
+        self.assertGreaterEqual(audio_duration, 1_040)
+        self.assertLessEqual(audio_duration, 1_080)
+
+    def test_stream_fast_path_rejects_pcm_samples_beyond_silk_frames(
+        self,
+    ) -> None:
+        case = self.streaming_fixture("sample-mismatch")
+        process = FakeStreamProcess(
+            case["output"],
+            partial_on_start=False,
+        )
+        probe = mock.Mock()
+
+        def padded_decoder(
+            source: Path,
+            destination: Path,
+            sample_rate: int,
+        ) -> None:
+            self.fake_stream_decoder(source, destination, sample_rate)
+            if source.name.startswith("0001."):
+                with destination.open("ab") as handle:
+                    handle.write(b"\0\0" * 480)
+
+        with mock.patch.object(
+            archive_export_module,
+            "_load_extract_manifest",
+            return_value=case["loaded"],
+        ), mock.patch.object(
+            archive_export_module,
+            "_default_silk_decoder",
+            side_effect=padded_decoder,
+        ), mock.patch.object(
+            archive_export_module,
+            "_resolve_local_ffmpeg",
+            return_value=(
+                Path("/bin/echo"),
+                "fixture-7.1",
+                hashlib.sha256(b"ffmpeg").hexdigest(),
+            ),
+        ), mock.patch.object(
+            archive_export_module,
+            "_write_ffmpeg_stdin",
+            side_effect=AssertionError("invalid PCM must not be streamed"),
+        ), mock.patch.object(
+            archive_export_module.subprocess,
+            "Popen",
+            return_value=process,
+        ), mock.patch.object(
+            archive_export_module.subprocess,
+            "run",
+            probe,
+        ):
+            with self.assertRaisesRegex(
+                VaultError,
+                "PCM 样本数与 SILK 帧不一致",
+            ):
+                archive_export_module._stream_voice_pcm_to_mp4(
+                    case["extract"],
+                    case["extract_report"],
+                    case["messages"],
+                    case["output"],
+                    title="sample mismatch fixture",
+                    expected_chat_id=case["chat_id"],
+                    expected_source_plan_digest=case["source_plan_digest"],
+                )
+
+        self.assertTrue(process.terminated)
+        self.assertFalse(case["output"].exists())
+        probe.assert_not_called()
 
     def test_stream_fast_path_timeout_and_broken_pipe_remove_partial(
         self,
