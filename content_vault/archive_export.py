@@ -722,6 +722,17 @@ def _stream_voice_pcm_to_mp4(
     if output_path.exists() or output_path.is_symlink():
         raise VaultError("MP4-only ffmpeg 输出已存在，拒绝覆盖")
 
+    gap_samples = PCM_SAMPLE_RATE * VOICE_MP4_GAP_MILLISECONDS // 1_000
+    planned_total_samples = gap_samples * max(0, len(prepared) - 1)
+    for _message, voice, _extracted, _binding in prepared:
+        frame_sample_numerator = voice["frame_duration_ms"] * PCM_SAMPLE_RATE
+        if frame_sample_numerator % 1_000:
+            raise VaultError("SILK 帧时长无法精确映射到 PCM 样本")
+        planned_total_samples += frame_sample_numerator // 1_000
+    planned_duration_seconds = (
+        f"{planned_total_samples / PCM_SAMPLE_RATE:.6f}"
+    )
+
     ffmpeg, ffmpeg_package_version, ffmpeg_hash = _resolve_local_ffmpeg()
     output_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     pcm_root = output_path.parent / ".voice-pcm"
@@ -741,7 +752,10 @@ def _stream_voice_pcm_to_mp4(
         "-f",
         "lavfi",
         "-i",
-        "color=c=0x111827:s=1280x720:r=2",
+        (
+            "color=c=0x111827:s=1280x720:r=2:"
+            f"d={planned_duration_seconds}"
+        ),
         "-f",
         "s16le",
         "-ar",
@@ -783,7 +797,6 @@ def _stream_voice_pcm_to_mp4(
     evidence: list[dict[str, Any]] = []
     stream_hash = hashlib.sha256()
     total_samples = 0
-    gap_samples = PCM_SAMPLE_RATE * VOICE_MP4_GAP_MILLISECONDS // 1_000
     gap_bytes = bytes(gap_samples * PCM_BYTES_PER_SAMPLE)
     deadline = time.monotonic() + VOICE_MP4_STREAM_TIMEOUT_SECONDS
     try:
@@ -834,6 +847,13 @@ def _stream_voice_pcm_to_mp4(
 
                     pcm_byte_count = pcm_path.stat().st_size
                     pcm_sample_count = pcm_byte_count // PCM_BYTES_PER_SAMPLE
+                    expected_frame_samples = (
+                        voice["frame_duration_ms"] * PCM_SAMPLE_RATE // 1_000
+                    )
+                    if pcm_sample_count != expected_frame_samples:
+                        raise VaultError(
+                            f"第 {sequence} 条 PCM 样本数与 SILK 帧不一致"
+                        )
                     pcm_hash = _sha256_file(pcm_path)
                     start_sample = total_samples
                     with pcm_path.open("rb") as pcm_handle:
@@ -873,6 +893,8 @@ def _stream_voice_pcm_to_mp4(
                 finally:
                     pcm_path.unlink(missing_ok=True)
 
+            if total_samples != planned_total_samples:
+                raise VaultError("流式 PCM 总样本数与 SILK 帧计划不一致")
             if _sha256_file(source_manifest) != source_manifest_hash:
                 raise VaultError("SILK 提取清单在流式解码过程中发生变化")
             process.stdin.close()
